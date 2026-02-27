@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Create Order</h2>
+
+<form method="POST" class="mb-4">
+    <input type="text" name="hospital_name" placeholder="Hospital Name" class="form-control mb-2" required>
+    <input type="text" name="item_name" placeholder="Item Name" class="form-control mb-2" required>
+    <input type="number" name="quantity" placeholder="Quantity" class="form-control mb-2" required>
+    <button class="btn btn-success">Create Order</button>
+</form>
+
+<h3>Orders</h3>
+
+<table class="table table-striped">
+    <tr>
+        <th>ID</th>
+        <th>Hospital</th>
+        <th>Item</th>
+        <th>Quantity</th>
+        <th>Status</th>
+        <th>Action</th>
+    </tr>
+
+    {% for order in orders %}
+    <tr>
+        <td>{{ order.id }}</td>
+        <td>{{ order.hospital_name }}</td>
+        <td>{{ order.item_name }}</td>
+        <td>{{ order.quantity }}</td>
+        <td>{{ order.status }}</td>
+        <td>
+            <a href="/update_status/{{ order.id }}" class="btn btn-warning btn-sm">
+                Toggle Status
+            </a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

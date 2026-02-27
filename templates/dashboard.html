@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5>Total Inventory Items</h5>
+                <h3>{{ inventory_count }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5>Total Orders</h5>
+                <h3>{{ order_count }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

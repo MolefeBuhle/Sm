@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Inventory</h2>
+
+<form method="POST" class="mb-4">
+    <input type="text" name="item_name" placeholder="Item Name" class="form-control mb-2" required>
+    <input type="number" name="quantity" placeholder="Quantity" class="form-control mb-2" required>
+    <button class="btn btn-primary">Add / Update Item</button>
+</form>
+
+<table class="table table-bordered">
+    <tr>
+        <th>ID</th>
+        <th>Item Name</th>
+        <th>Quantity</th>
+        <th>Action</th>
+    </tr>
+
+    {% for item in items %}
+    <tr>
+        <td>{{ item.id }}</td>
+        <td>{{ item.item_name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>
+            <a href="/delete_inventory/{{ item.id }}" class="btn btn-danger btn-sm">Delete</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

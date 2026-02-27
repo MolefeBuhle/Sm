@@ -1,17 +1,37 @@
-from flask import Flask, render_template, request, redirect, flash
+from flask import Flask, render_template, request, redirect, flash, url_for
 from config import Config
 from models import db, Inventory, Order, User
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Verify secret key is set properly
+if app.config['SECRET_KEY'] == 'dev-key-change-in-production':
+    logger.warning("Using default secret key - this is insecure for production!")
+
+# Session configuration for production
+app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['REMEMBER_COOKIE_SECURE'] = True  # For remember me functionality
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour in seconds
 
 db.init_app(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+login_manager.login_message = "Please log in to access this page."
+login_manager.session_protection = "strong"  # Extra session protection
 
 # ---------------------
 # USER LOADER
@@ -24,7 +44,9 @@ def load_user(user_id):
 # CREATE DATABASE
 # ---------------------
 with app.app_context():
+    logger.info("Creating database tables...")
     db.create_all()
+    logger.info("Database tables created successfully!")
 
 # ---------------------
 # REGISTER
@@ -37,14 +59,14 @@ def register():
 
         if User.query.filter_by(username=username).first():
             flash("Username already exists.", "danger")
-            return redirect("/register")
+            return redirect(url_for("register"))
 
         new_user = User(username=username, password=password)
         db.session.add(new_user)
         db.session.commit()
 
-        flash("Account created successfully!", "success")
-        return redirect("/login")
+        flash("Account created successfully! Please login.", "success")
+        return redirect(url_for("login"))
 
     return render_template("register.html")
 
@@ -56,13 +78,18 @@ def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
+        
+        logger.info(f"Login attempt for user: {username}")
 
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
             login_user(user)
-            return redirect("/")
+            logger.info(f"Login successful for user: {username}")
+            flash("Logged in successfully!", "success")
+            return redirect(url_for("dashboard"))
         else:
+            logger.warning(f"Login failed for user: {username}")
             flash("Invalid credentials.", "danger")
 
     return render_template("login.html")
@@ -74,7 +101,8 @@ def login():
 @login_required
 def logout():
     logout_user()
-    return redirect("/login")
+    flash("Logged out successfully.", "success")
+    return redirect(url_for("login"))
 
 # ---------------------
 # DASHBOARD
@@ -84,6 +112,7 @@ def logout():
 def dashboard():
     inventory_count = Inventory.query.count()
     order_count = Order.query.count()
+    logger.info(f"Dashboard accessed by user: {current_user.username}")
     return render_template("dashboard.html",
                            inventory_count=inventory_count,
                            order_count=order_count)
@@ -102,15 +131,29 @@ def inventory():
 
         if existing_item:
             existing_item.quantity += quantity
+            flash(f"Updated {item_name} quantity to {existing_item.quantity}", "success")
         else:
             new_item = Inventory(item_name=item_name, quantity=quantity)
             db.session.add(new_item)
+            flash(f"Added new item: {item_name}", "success")
 
         db.session.commit()
-        return redirect("/inventory")
+        return redirect(url_for("inventory"))
 
     items = Inventory.query.all()
     return render_template("inventory.html", items=items)
+
+# ---------------------
+# DELETE INVENTORY ITEM
+# ---------------------
+@app.route("/inventory/delete/<int:item_id>")
+@login_required
+def delete_inventory(item_id):
+    item = Inventory.query.get_or_404(item_id)
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"Deleted {item.item_name} from inventory", "success")
+    return redirect(url_for("inventory"))
 
 # ---------------------
 # ORDERS
@@ -127,11 +170,11 @@ def orders():
 
         if not inventory_item:
             flash("Item does not exist in inventory.", "danger")
-            return redirect("/orders")
+            return redirect(url_for("orders"))
 
         if inventory_item.quantity < quantity:
-            flash("Insufficient stock available.", "danger")
-            return redirect("/orders")
+            flash(f"Insufficient stock. Available: {inventory_item.quantity}", "danger")
+            return redirect(url_for("orders"))
 
         inventory_item.quantity -= quantity
 
@@ -145,13 +188,37 @@ def orders():
         db.session.add(new_order)
         db.session.commit()
 
-        flash("Order created successfully!", "success")
-        return redirect("/orders")
+        flash(f"Order created successfully for {hospital_name}!", "success")
+        return redirect(url_for("orders"))
 
     orders = Order.query.all()
-    return render_template("orders.html", orders=orders)
+    inventory_items = Inventory.query.all()
+    return render_template("orders.html", orders=orders, inventory_items=inventory_items)
+
+# ---------------------
+# UPDATE ORDER STATUS
+# ---------------------
+@app.route("/orders/update/<int:order_id>")
+@login_required
+def update_order_status(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.status == "Dispatched":
+        order.status = "Delivered"
+        flash(f"Order #{order_id} marked as delivered", "success")
+    else:
+        order.status = "Dispatched"
+        flash(f"Order #{order_id} marked as dispatched", "success")
+    
+    db.session.commit()
+    return redirect(url_for("orders"))
+
+# ---------------------
+# HEALTH CHECK (for Render)
+# ---------------------
+@app.route("/health")
+def health():
+    return {"status": "healthy"}, 200
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 5000)) # Use Render's PORT or default to 5000
-    app.run(host='0.0.0.0', port=port, debug=False) # Bind to 0.0.0.0
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

@@ -21,9 +21,9 @@ if app.config['SECRET_KEY'] == 'dev-key-change-in-production':
 app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['REMEMBER_COOKIE_SECURE'] = True  # For remember me functionality
+app.config['REMEMBER_COOKIE_SECURE'] = True
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour in seconds
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
 db.init_app(app)
 
@@ -31,7 +31,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 login_manager.login_message = "Please log in to access this page."
-login_manager.session_protection = "strong"  # Extra session protection
+login_manager.session_protection = "strong"
 
 # ---------------------
 # USER LOADER
@@ -41,12 +41,24 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ---------------------
-# CREATE DATABASE
+# CREATE DATABASE AND DEFAULT ADMIN
 # ---------------------
 with app.app_context():
     logger.info("Creating database tables...")
     db.create_all()
-    logger.info("Database tables created successfully!")
+    
+    # Check if any users exist
+    if User.query.count() == 0:
+        logger.info("No users found. Creating default admin user...")
+        admin = User(
+            username="admin", 
+            password=generate_password_hash("admin")
+        )
+        db.session.add(admin)
+        db.session.commit()
+        logger.info("Admin user created: username='admin', password='admin'")
+    else:
+        logger.info(f"Found {User.query.count()} existing users.")
 
 # ---------------------
 # REGISTER
@@ -217,7 +229,26 @@ def update_order_status(order_id):
 # ---------------------
 @app.route("/health")
 def health():
-    return {"status": "healthy"}, 200
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "users": User.query.count(),
+        "inventory": Inventory.query.count(),
+        "orders": Order.query.count()
+    }, 200
+
+# ---------------------
+# ERROR HANDLERS
+# ---------------------
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()  # Rollback any failed transactions
+    logger.error(f"500 error: {error}")
+    return render_template("500.html"), 500
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template("404.html"), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
